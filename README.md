@@ -49,19 +49,98 @@ Home Assistant / HomeKit
 
 ## Installation
 
-### Via Scrypted Plugin Manager
+This plugin is currently in beta and must be installed manually from GitHub.
 
-1. Open Scrypted web interface
-2. Go to Plugins
-3. Search for "Nanit Camera Plugin"
-4. Click Install
+### Prerequisites
 
-### Manual Installation
+Before installing, ensure you have:
+- **Scrypted** installed and running (https://www.scrypted.app/)
+- **Node.js and npm** installed on your development machine
+- **Git** installed for cloning the repository
 
-1. Clone this repository
-2. Run `npm install`
-3. Run `npm run build`
-4. Deploy to Scrypted using `npm run scrypted-deploy`
+### Step-by-Step Installation
+
+#### 1. Clone the Repository
+
+Clone this repository to your local machine:
+
+```bash
+git clone https://github.com/tman1206/scrypted-nanit.git
+cd scrypted-nanit
+```
+
+**Why**: Downloads the plugin source code to your computer so you can build and deploy it.
+
+#### 2. Install Dependencies
+
+Install all required npm packages:
+
+```bash
+npm install
+```
+
+**Why**: Downloads all the libraries the plugin needs (WebSocket client, RTMP server, Protocol Buffers, etc.).
+
+#### 3. Build the Plugin
+
+Compile the TypeScript code into JavaScript:
+
+```bash
+npm run build
+```
+
+**Why**: Scrypted runs JavaScript, so we need to compile our TypeScript source code. This creates the `main.nodejs.js` file that Scrypted will load.
+
+#### 4. Log in to Scrypted (First Time Only)
+
+If this is your first time deploying a plugin, authenticate with your Scrypted server:
+
+```bash
+npx scrypted login <your-scrypted-ip>:10443
+```
+
+Example: `npx scrypted login 192.168.1.20:10443`
+
+**Why**: Scrypted needs to verify you have permission to deploy plugins to the server. You only need to do this once per development machine.
+
+#### 5. Deploy to Scrypted
+
+Deploy the built plugin to your Scrypted server:
+
+```bash
+npm run scrypted-deploy <your-scrypted-ip>:10443
+```
+
+Or if using HTTPS without a valid certificate:
+
+```bash
+SCRYPTED_INSECURE=true npm run scrypted-deploy <your-scrypted-ip>:10443
+```
+
+Example: `SCRYPTED_INSECURE=true npm run scrypted-deploy 192.168.1.20:10443`
+
+**Why**: Uploads the compiled plugin to your Scrypted server and installs it. The `SCRYPTED_INSECURE` flag allows deployment over HTTPS with self-signed certificates.
+
+#### 6. Verify Installation
+
+1. Open your Scrypted web interface
+2. Go to **Plugins**
+3. You should see **"Nanit Camera Plugin"** in the list
+4. The plugin will automatically start
+
+### Updating the Plugin
+
+To update to a newer version:
+
+```bash
+cd scrypted-nanit
+git pull origin main
+npm install
+npm run build
+SCRYPTED_INSECURE=true npm run scrypted-deploy <your-scrypted-ip>:10443
+```
+
+**Why**: Gets the latest code, rebuilds it, and redeploys to your Scrypted server.
 
 ## Configuration
 
