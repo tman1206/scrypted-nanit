@@ -202,6 +202,16 @@ class NanitCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, Se
                 if (match) {
                     const babyUid = match[1];
                     this.lastStreamActivity.set(babyUid, Date.now());
+                    this.streamingActive.set(babyUid, true);
+                }
+            });
+
+            this.nms.on('postPublish', (id: string, StreamPath: string, args: any) => {
+                // Update activity timestamp while stream is active
+                const match = StreamPath.match(/\/live\/([^\/]+)/);
+                if (match) {
+                    const babyUid = match[1];
+                    this.lastStreamActivity.set(babyUid, Date.now());
                 }
             });
 
@@ -223,24 +233,24 @@ class NanitCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, Se
     }
 
     private startStreamHealthCheck() {
-        // Check stream health every 60 seconds
+        // Check stream health every 5 minutes
         this.streamHealthCheckInterval = setInterval(() => {
             const now = Date.now();
             for (const [babyUid, lastActivity] of this.lastStreamActivity) {
-                // If marked as streaming but no activity for 2 minutes, reset
-                if (this.streamingActive.get(babyUid) && (now - lastActivity) > 120000) {
-                    log.i(`No stream activity for ${babyUid} in 2 minutes, resetting state`);
+                // If no activity for 10 minutes, consider stream dead
+                if (this.streamingActive.get(babyUid) && (now - lastActivity) > 600000) {
+                    log.i(`No stream activity for ${babyUid} in 10 minutes, resetting state`);
                     this.streamingActive.set(babyUid, false);
                     this.lastStreamActivity.delete(babyUid);
                     
-                    // Close and reconnect WebSocket
+                    // Close WebSocket to allow reconnection on next request
                     const ws = this.wsConnections.get(babyUid);
                     if (ws) {
                         ws.close();
                     }
                 }
             }
-        }, 60000);
+        }, 300000); // Check every 5 minutes
     }
 
     private async restartRTMPServer() {
@@ -546,19 +556,47 @@ class NanitCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, Se
         
         log.d(`[DEBUG] Babies after sync: ${JSON.stringify(this.babies.map(b => ({ uid: b.uid, name: b.name, camera_uid: b.camera_uid })))}`);
         
-        // Check if streaming is already active and WebSocket is connected
-        const isActive = this.streamingActive.get(babyUid);
+        // Check if WebSocket is connected and stream is active
         const hasConnection = this.wsConnections.has(babyUid);
+        const ws = this.wsConnections.get(babyUid);
+        const isActive = this.streamingActive.get(babyUid);
         
-        if (isActive && hasConnection) {
-            log.d(`Streaming already active for ${babyUid}`);
+        // If we have an active WebSocket connection, don't create a new one
+        if (hasConnection && ws && ws.readyState === WebSocket.OPEN) {
+            log.d(`WebSocket already connected for ${babyUid}, reusing connection`);
+            
+            // If not marked as streaming, send another streaming request
+            if (!isActive) {
+                log.d(`Resending streaming request on existing connection`);
+                try {
+                    const streamUrl = `rtmp://192.168.1.20:${this.rtmpPort}/live/${babyUid}`;
+                    const message = client.Message.create({
+                        type: client.Message.Type.REQUEST,
+                        request: {
+                            id: Date.now(),
+                            type: client.RequestType.PUT_STREAMING,
+                            streaming: {
+                                id: client.StreamIdentifier.MOBILE,
+                                status: client.Streaming.Status.STARTED,
+                                rtmpUrl: streamUrl,
+                                attempts: 1
+                            }
+                        }
+                    });
+                    const buffer = client.Message.encode(message).finish();
+                    ws.send(buffer);
+                } catch (error) {
+                    log.e('Failed to resend streaming request: ' + error.message);
+                }
+            }
             return;
         }
         
-        // If marked active but no connection, reset state
-        if (isActive && !hasConnection) {
-            log.i(`Streaming marked active but no WebSocket connection, resetting for ${babyUid}`);
-            this.streamingActive.set(babyUid, false);
+        // Clean up any stale connection
+        if (hasConnection && ws) {
+            log.d(`Closing stale WebSocket for ${babyUid}`);
+            ws.close();
+            this.wsConnections.delete(babyUid);
         }
 
         // Find the baby's camera UID
